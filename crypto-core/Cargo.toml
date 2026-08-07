@@ -1,0 +1,23 @@
+[package]
+name = "crypto-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "czq_core"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+blake3.workspace = true
+sha2.workspace = true
+hkdf.workspace = true
+aes.workspace = true
+ctr.workspace = true
+aes-gcm.workspace = true
+chacha20.workspace = true
+ed25519-dalek.workspace = true
+zeroize.workspace = true
+subtle.workspace = true
+miniz_oxide = "0.8"
