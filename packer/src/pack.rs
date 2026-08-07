@@ -137,7 +137,7 @@ pub fn run(cfg: PackConfig) -> Result<()> {
     let mut chunk_count = 0usize;
     for (chunk_id, payload) in &chunk_payloads {
         let sealed = seal_chunk(&codec, &sprite_secret, &build_salt, *chunk_id, cfg.sprite_cipher, payload);
-        fs::write(cfg.out_dir.join(format!("spr_chunk_{chunk_id}.czq")), &sealed)?;
+        fs::write(cfg.out_dir.join(format!("s{chunk_id}.bin")), &sealed)?;
         chunk_count += 1;
     }
     eprintln!("[pack] {chunk_count} chunk files");
@@ -150,7 +150,7 @@ pub fn run(cfg: PackConfig) -> Result<()> {
     let sprite_total = index_entries.iter().map(|e| e.sprite_id).max().unwrap_or(0);
     let index_plain = index::build(&index_entries, sprite_total, cfg.chunk_size);
     let index_env = seal_cold(&codec, &master, &build_salt, INDEX_ASSET_ID, ASSET_COLD, CIPHER_AES_GCM, 0, rand16(), &index_plain);
-    fs::write(cfg.out_dir.join("index.czq"), &index_env)?;
+    fs::write(cfg.out_dir.join("index.bin"), &index_env)?;
     assets.push(AssetRecord { asset_id: INDEX_ASSET_ID, profile: ASSET_COLD, sha256: sha256(&index_env), name: "index".into() });
 
     // collect cold inputs: dat, otb, then explicit cold list
@@ -190,7 +190,7 @@ pub fn run(cfg: PackConfig) -> Result<()> {
     // Item C: encrypt the manifest at rest (build_seed key; integrity is the plaintext hash).
     let mut manifest_out = built.blob.clone();
     czq_core::manifest::xor_manifest(&build_seed, &mut manifest_out);
-    fs::write(cfg.out_dir.join("manifest.czq"), &manifest_out)?;
+    fs::write(cfg.out_dir.join("client.dat"), &manifest_out)?;
 
     // --- solve + emit shares (RFC §7.3, §15 step 6) ---
     let r = [rand32(), rand32(), rand32()];

@@ -171,7 +171,7 @@ fn verify(a: VerifyArgs) -> Result<()> {
     let material = std::fs::read(a.out.join("embed/material.bin")).context("read embed/material.bin")?;
     let pkbuf = std::fs::read(a.out.join("embed/pubkey.bin")).context("read embed/pubkey.bin")?;
     let pubkey: [u8; 32] = pkbuf.as_slice().try_into().context("pubkey must be 32 bytes")?;
-    let manifest = std::fs::read(a.out.join("manifest.czq")).context("read manifest.czq")?;
+    let manifest = std::fs::read(a.out.join("client.dat")).context("read manifest.czq")?;
 
     let mut ctx = czq_core::Context::boot(&material, &manifest, &pubkey)
         .map_err(|e| anyhow::anyhow!("boot failed: {e}"))?;
@@ -184,8 +184,8 @@ fn verify(a: VerifyArgs) -> Result<()> {
     let idx_id = ctx
         .asset_id_by_name(&idx_name)
         .ok_or_else(|| anyhow::anyhow!("index asset id not found"))?;
-    let idx_env = std::fs::read(a.out.join(format!("{idx_name}.czq")))
-        .with_context(|| format!("read {idx_name}.czq"))?;
+    let idx_env = std::fs::read(a.out.join(format!("{idx_name}.bin")))
+        .with_context(|| format!("read {idx_name}.bin"))?;
     ctx.load_index(idx_id, &idx_env).map_err(|e| anyhow::anyhow!("load_index failed: {e}"))?;
     println!(
         "index '{}' loaded: entries={} sprite_total={}",
@@ -200,7 +200,7 @@ fn verify(a: VerifyArgs) -> Result<()> {
         .unwrap_or_default();
     match ctx.chunk_of(a.sprite) {
         Ok(cid) => {
-            let chunk_path = a.out.join(format!("{chunk_dir}/spr_chunk_{cid}.czq"));
+            let chunk_path = a.out.join(format!("{chunk_dir}/s{cid}.bin"));
             let chunk = std::fs::read(&chunk_path).with_context(|| format!("read {}", chunk_path.display()))?;
             match ctx.decrypt_sprite(a.sprite, &chunk, true) {
                 Ok(px) => println!(

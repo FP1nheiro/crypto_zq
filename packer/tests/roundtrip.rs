@@ -51,7 +51,7 @@ fn pack_then_boot_and_decrypt() {
     // --- boot as the client would ---
     let material = fs::read(out.join("embed/material.bin")).unwrap();
     let pubkey: [u8; 32] = fs::read(out.join("embed/pubkey.bin")).unwrap().try_into().unwrap();
-    let manifest = fs::read(out.join("manifest.czq")).unwrap();
+    let manifest = fs::read(out.join("client.dat")).unwrap();
 
     let mut ctx = Context::boot(&material, &manifest, &pubkey).expect("boot");
 
@@ -62,12 +62,12 @@ fn pack_then_boot_and_decrypt() {
     assert_eq!(dec, fs::read(&lua).unwrap());
 
     // sprite path: load the index, then decrypt sprite id 1 from its chunk
-    let index_env = fs::read(out.join("index.czq")).unwrap();
+    let index_env = fs::read(out.join("index.bin")).unwrap();
     ctx.load_index(1, &index_env).expect("load index");
     assert_eq!(ctx.index_len(), 40);
 
     let chunk_id = ctx.chunk_of(1).expect("chunk of sprite 1");
-    let chunk = fs::read(out.join(format!("spr_chunk_{chunk_id}.czq"))).unwrap();
+    let chunk = fs::read(out.join(format!("s{chunk_id}.bin"))).unwrap();
     let pixels = ctx.decrypt_sprite(1, &chunk, true).expect("decrypt sprite");
     assert!(!pixels.is_empty());
 
@@ -105,8 +105,8 @@ fn packdir_mirrors_tree_and_compresses() {
     ]);
 
     // tree mirrored: chunks live next to where the .spr was
-    assert!(out.join("data/chunks/index.czq").exists());
-    assert!(out.join("data/chunks/spr_chunk_0.czq").exists());
+    assert!(out.join("data/chunks/index.bin").exists());
+    assert!(out.join("data/chunks/s0.bin").exists());
     assert!(out.join("modules/game.lua").exists()); // same name, encrypted
 
     // compression actually shrank the cold file below the plaintext size
@@ -116,7 +116,7 @@ fn packdir_mirrors_tree_and_compresses() {
     // boot + decrypt
     let material = fs::read(out.join("embed/material.bin")).unwrap();
     let pubkey: [u8; 32] = fs::read(out.join("embed/pubkey.bin")).unwrap().try_into().unwrap();
-    let manifest = fs::read(out.join("manifest.czq")).unwrap();
+    let manifest = fs::read(out.join("client.dat")).unwrap();
     let mut ctx = Context::boot(&material, &manifest, &pubkey).expect("boot");
 
     // cold round-trips through decompression
@@ -126,10 +126,10 @@ fn packdir_mirrors_tree_and_compresses() {
 
     // sprite round-trips through the index in data/chunks/
     let idx_id = ctx.asset_id_by_name("data/chunks/index").expect("index id");
-    let idx_env = fs::read(out.join("data/chunks/index.czq")).unwrap();
+    let idx_env = fs::read(out.join("data/chunks/index.bin")).unwrap();
     ctx.load_index(idx_id, &idx_env).unwrap();
     let cid = ctx.chunk_of(1).unwrap();
-    let chunk = fs::read(out.join(format!("data/chunks/spr_chunk_{cid}.czq"))).unwrap();
+    let chunk = fs::read(out.join(format!("data/chunks/s{cid}.bin"))).unwrap();
     let pixels = ctx.decrypt_sprite(1, &chunk, true).unwrap();
     assert_eq!(&pixels[0..3], &[0xFF, 0x00, 0xFF]); // sprite color key survived
 }

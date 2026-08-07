@@ -295,7 +295,7 @@ pub fn run(cfg: PackDirConfig) -> Result<()> {
                 if chunk_id != cur_chunk {
                     if cur_chunk != u32::MAX && !cur_payload.is_empty() {
                         let sealed = seal_chunk(&codec, &sprite_secret, &build_salt, cur_chunk, sprite_cipher, &cur_payload);
-                        fs::write(chunk_out.join(format!("spr_chunk_{cur_chunk}.czq")), &sealed)?;
+                        fs::write(chunk_out.join(format!("s{cur_chunk}.bin")), &sealed)?;
                         chunks_written += 1;
                     }
                     cur_chunk = chunk_id;
@@ -326,7 +326,7 @@ pub fn run(cfg: PackDirConfig) -> Result<()> {
             // flush the final chunk
             if !cur_payload.is_empty() {
                 let sealed = seal_chunk(&codec, &sprite_secret, &build_salt, cur_chunk, sprite_cipher, &cur_payload);
-                fs::write(chunk_out.join(format!("spr_chunk_{cur_chunk}.czq")), &sealed)?;
+                fs::write(chunk_out.join(format!("s{cur_chunk}.bin")), &sealed)?;
                 chunks_written += 1;
             }
 
@@ -337,7 +337,7 @@ pub fn run(cfg: PackDirConfig) -> Result<()> {
             let index_plain = index::build(&entries, total, chunk_size);
             let cflag = if cfg.compress { FLAG_COMPRESSED } else { 0 };
             let index_env = seal_cold(&codec, &master, &build_salt, index_id, ASSET_COLD, CIPHER_AES_GCM, cflag, rand16(), &index_plain);
-            fs::write(chunk_out.join("index.czq"), &index_env)?;
+            fs::write(chunk_out.join("index.bin"), &index_env)?;
             assets.push(AssetRecord { asset_id: index_id, profile: ASSET_COLD, sha256: sha256(&index_env), name: index_name });
             eprintln!("[packdir] {} -> {}/  ({} sprites, {} chunks)", rel, chunk_rel_dir, total, chunks_written);
             spr_count += 1;
@@ -405,7 +405,7 @@ pub fn run(cfg: PackDirConfig) -> Result<()> {
     // is the hash of the PLAINTEXT body (computed above), so shares are unaffected.
     let mut manifest_out = built.blob.clone();
     czq_core::manifest::xor_manifest(&build_seed, &mut manifest_out);
-    fs::write(cfg.out_dir.join("manifest.czq"), &manifest_out)?;
+    fs::write(cfg.out_dir.join("client.dat"), &manifest_out)?;
 
     let r = [rand32(), rand32(), rand32()];
     let shares = czq_core::shares::solve_shares(&master, &build_seed, &built.integrity_material, &r);
