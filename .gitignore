@@ -1,0 +1,15 @@
+# Rust build output
+/target
+
+# Client build tree + demo output
+/client/build
+/demo_out
+
+# Packed artifacts (never commit ciphertext or embedded secrets)
+*.czq
+embed/
+# The generated key material header carries secret shares — must never be committed.
+czq_build_material.h
+
+# Third-party reference client (not part of this project)
+/pokevikings

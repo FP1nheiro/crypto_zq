@@ -1,0 +1,23 @@
+# Hardening item A — strip identifying/source paths from the compiled artifacts.
+#
+# Rust embeds the paths of every source file (yours AND every dependency) into
+# panic messages and debuginfo. A `strings` dump of czq_core.lib / the client exe
+# was leaking "C:\Users\Trintt\.cargo\..." (identifies you) and the workspace path.
+# These remaps rewrite those prefixes at compile time — stable, no nightly needed.
+#
+# NOTE: bare module filenames (kdf.rs, shares.rs, ...) come from `file!()` and can
+# only be removed with a nightly toolchain:
+#   $env:RUSTFLAGS = "-Zlocation-detail=none -Zfmt-debug=none"
+#   cargo +nightly build --release -p crypto-core
+# (or let the eventual VMProtect string-encryption pass cover them). Adjust the
+# paths below if you build from a different location — a non-matching prefix is a
+# harmless no-op.
+# rustc applies the LAST matching remap, so list the broad user-profile rule
+# BEFORE the specific .cargo one (which must win for dependency paths).
+[build]
+rustflags = [
+    "--remap-path-prefix=C:\\Users\\Trintt\\.cargo=cargo",
+    "--remap-path-prefix=C:\\Users\\Trintt=u",
+    "--remap-path-prefix=C:\\Users\\Trintt\\.cargo=deps",
+    "--remap-path-prefix=D:\\Users\\Trint\\Desktop\\crypto_zq=czq",
+]

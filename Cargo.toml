@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = ["crypto-core", "packer", "packer-gui"]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+license = "Proprietary"
+rust-version = "1.75"
+
+[workspace.dependencies]
+blake3 = "1.5"
+sha2 = "0.10"
+hkdf = "0.12"
+hmac = "0.12"
+aes = "0.8"
+ctr = "0.9"
+aes-gcm = "0.10"
+chacha20 = "0.9"
+ed25519-dalek = { version = "2", default-features = false }
+zeroize = { version = "1.8", features = ["derive"] }
+subtle = "2.6"
+rand = "0.8"
+rand_chacha = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
