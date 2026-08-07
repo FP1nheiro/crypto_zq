@@ -52,13 +52,17 @@ boot lazy, `decryptAsset` (cold/UI/.dat/lua), `decryptSprite` (chunks + LRU),
 ## 2. Edições nos arquivos STOCK
 
 ### 2a. Portáveis — aplique o patch
-`resourcemanager.cpp`, `luainterface.cpp`, `vc17/settings.props` têm estrutura igual
-à do stock. O patch os leva ao estado CZQ:
+O patch `CZQ_NEW_CLIENT.patch` é **CZQ puro** (sem ruído de fork) e cobre os **5
+arquivos stock** editados: `resourcemanager.cpp`, `luainterface.cpp`,
+`spritemanager.{h,cpp}` e `vc17/otclient.vcxproj`. Aplica limpo num OTClientV8 stock —
+**verificado neste `otclientv8-master`, que já está integrado** (o patch foi aplicado):
 
 ```bash
 cd otclientv8-master
-git apply --reject CZQ_NEW_CLIENT.patch      # ou: patch -p1 < CZQ_NEW_CLIENT.patch
+patch -p1 < CZQ_NEW_CLIENT.patch      # ou: git apply CZQ_NEW_CLIENT.patch
 ```
+
+> `settings.props` **não** é tocado — o import do `czq.props` fica no `vcxproj`.
 
 O que o patch faz, resumido:
 - **`resourcemanager.cpp`** (hook central, RFC §5.1):
@@ -71,74 +75,38 @@ O que o patch faz, resumido:
 - **`luainterface.cpp`** (`createLuaState`): **sandbox de FFI em C** — remove `ffi` de
   `package.preload`/`loaded`/global e mata `package.loadlib`. Feito em C (não como
   string Lua) porque um bootstrap Lua em `.rdata` é trivial de blanquear.
-- **`vc17/settings.props`**: `<Import Project="czq.props" .../>` (no-op sem `WITH_CZQ=1`).
+- **`spritemanager.{h,cpp}`**: caminho de sprite **on-demand** (flag `m_czq`, boot no
+  `loadSpr`, ramo de decode no `getSpriteImageCasual`) — ver 2b.
+- **`vc17/otclient.vcxproj`**: `WITH_CZQ` default=1 no `<PropertyGroup Label="Globals">`
+  + `<Import Project="czq.props"/>` por ÚLTIMO (para o `AdditionalDependencies` apended
+  depois do `release.props`).
 
-### 2b. `vc17/otclient.vcxproj`
-Adicione (o resto do diff desse arquivo é config PxG, ignore):
-```xml
-  <!-- dentro do <PropertyGroup Label="Globals">: liga CZQ por padrão na IDE -->
-  <WITH_CZQ Condition="'$(WITH_CZQ)'==''">1</WITH_CZQ>
-```
-```xml
-  <!-- ANTES de </Project>, DEPOIS do import de release.props: importado por ULTIMO
-       para o AdditionalDependencies do czq.props apended sem %(...) -->
-  <Import Project="czq.props" Condition="exists('czq.props')" />
-```
-
-### 2c. `spritemanager` — adaptar (estrutura varia por client)
+### 2b. Sprites — on-demand (o ponto crítico, já no patch)
 
 > ⚠️ **SPRITES SÃO SOB DEMANDA — nunca preload.** Cada sprite é decifrado **na hora
 > em que o renderer pede** `getSpriteImage(id)`. O `g_czq.decryptSprite(id, blob)` lê
 > o **chunk dono** on-demand via `std::ifstream` (thread-safe, nunca PHYSFS fora da
 > main thread), verifica o MAC **uma vez por chunk**, e mantém um **cache LRU limitado
-> por bytes** (`kChunkCacheBudget` = 48 MB no `czqclient.h`) que despeja os chunks
-> antigos. **NÃO** adicione um loop que decifra/carrega todos os sprites no boot —
-> isso estoura a RAM (a `.spr` real tem ~180k–1M sprites). O ramo CZQ abaixo entra
-> exatamente no ponto lazy `getSpriteImage(id)` do seu client, um sprite por vez.
+> por bytes** (`kChunkCacheBudget` = 48 MB no `czqclient.h`) que despeja chunks antigos.
+> **NUNCA** adicione um loop que decifra/carrega todos os sprites no boot — a `.spr`
+> real tem ~180k–1M sprites e isso estoura a RAM.
 
-O caminho de sprite depende da sua `spritemanager`. Padrão (referência: `v8_pxg`):
+O patch já traz a integração **adaptada à estrutura deste client** (`getSpriteImageCasual`,
+sem enum `SprFormat`): um `bool m_czq`, o boot no `loadSpr` (marca `m_czq` +
+`m_spritesCount = g_czq.spriteCount()` e retorna) e o ramo que decifra **um sprite por
+vez** no `getSpriteImageCasual` — o **mesmo decoder RLE** do `.spr` clássico, lendo do
+blob que o `g_czq.decryptSprite(id)` devolve.
 
-1. `spritemanager.h`: adicione o modo CZQ ao enum de formato (ou um `bool m_czq`):
-   ```cpp
-   enum class SprFormat { None, NormalSpr, OTV8EncryptedSpr, CzqChunks };
-   ```
-2. `spritemanager.cpp`, no `#include`s: `#include <framework/core/czq/czqclient.h>`.
-3. Em `loadSpr(...)`: em vez de abrir o `.spr` em texto, **boota o CZQ** e, se houver
-   índice, entra no modo chunks:
-   ```cpp
-   #ifdef WITH_CZQ
-       g_czq.boot();
-       if (g_czq.spriteReady()) {
-           m_sprFormat = SprFormat::CzqChunks;
-           m_spritesCount = (int)g_czq.spriteCount();
-           m_spriteNativeSize = 32;   // sprite nativo 32x32
-           // NAO force m_spriteSize aqui (reflete o fator de HD/upscale; forcar 32
-           // com upscale ligado -> imagem 64x64 blitada como 32x32 -> heap corruption).
-           m_loaded = true;
-           return true;
-       }
-   #endif
-   ```
-4. Na função que **decodifica** um sprite pra `Image` (no v8_pxg é
-   `decodeSpriteImageCasual`; no stock é `getSpriteImageCasual`/`getSpriteImageHd`),
-   adicione o ramo CZQ ANTES da leitura do `.spr`:
-   ```cpp
-   #ifdef WITH_CZQ
-       if (m_sprFormat == SprFormat::CzqChunks) {
-           std::string blob;
-           if (!g_czq.decryptSprite((uint32_t)id, blob) || blob.size() < 5)
-               return nullptr;
-           // 'blob' tem o MESMO layout [3 bytes color-key][u16 size][RLE] que o
-           // decoder normal do .spr espera — decodifique-o igual ao ramo NormalSpr.
-           // (Ver a implementacao completa em v8_pxg/src/client/spritemanager.cpp.)
-       }
-   #endif
-   ```
-   O `blob` é idêntico ao bloco de um sprite no `.spr` — reaproveite o decoder RLE que
-   você já tem. Copie o corpo completo do ramo do `v8_pxg` como base.
+**Adaptando a OUTRO client** (estrutura de sprite diferente): reproduza o padrão —
+(1) no `loadSpr`, boota o CZQ e, se `spriteReady()`, marca o modo, seta
+`m_spritesCount = g_czq.spriteCount()` e retorna `true`; (2) na função que decodifica um
+sprite pra `Image`, ANTES de ler o `.spr`, chama `g_czq.decryptSprite(id, blob)` e
+decodifica o blob (`[3 color-key][u16 size][RLE]`) com o seu decoder. ⚠️ Se o client
+tiver HD/upscale, **não** force `m_spriteSize` a 32 com upscale ligado (gera imagem
+64x64 blitada como 32x32 → heap corruption).
 
-`fileExists` (patch 2a) já reporta o `.spr` como presente quando o índice CZQ está
-carregado, então o gate "Missing file" do stock não falha.
+`fileExists` (no patch) já reporta o `.spr` como presente quando o índice CZQ carregou,
+então o gate "Missing file" do stock não falha.
 
 ---
 
